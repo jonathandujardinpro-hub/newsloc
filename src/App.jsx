@@ -53,7 +53,7 @@ function calcProfit(rental) {
   const ms = new Date(rental.endDate) - new Date(rental.startDate);
   const days = ms / (1000 * 60 * 60 * 24);
   const revenue = parseFloat(rental.pricePerDay) * days;
-  const cost = parseFloat(rental.costBroker) || 0;
+  const cost = (parseFloat(rental.costBroker) || 0) * days;
   return { revenue, cost, profit: revenue - cost, days };
 }
 
