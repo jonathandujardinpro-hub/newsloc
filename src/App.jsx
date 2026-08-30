@@ -30,11 +30,11 @@ const CAR_BRANDS = {
 };
 
 const DURATIONS = [
-  { label: "24h", hours: 24 },
-  { label: "48h", hours: 48 },
-  { label: "72h", hours: 72 },
-  { label: "1 semaine", hours: 168 },
-  { label: "Personnalisé", hours: null },
+  { label: "1 jour", days: 1 },
+  { label: "2 jours", days: 2 },
+  { label: "3 jours", days: 3 },
+  { label: "1 semaine", days: 7 },
+  { label: "Personnalisé", days: null },
 ];
 
 const STATUS_COLORS = {
@@ -221,7 +221,7 @@ function RentalForm({ initial, onSave, onDelete, clients }) {
     car: "", clientName: "", clientId: "",
     startDate: "", endDate: "",
     durationPreset: "24h",
-    customHours: "",
+    customDays: "",
     pricePerDay: "", costBroker: "",
     deposit: false, depositAmount: "",
     notes: "",
@@ -233,9 +233,11 @@ function RentalForm({ initial, onSave, onDelete, clients }) {
     const s = start || form.startDate;
     if (!s) return;
     const dur = DURATIONS.find(d => d.label === preset);
-    if (!dur || !dur.hours) return;
-    const end = new Date(new Date(s).getTime() + dur.hours * 36e5);
-    set("endDate", end.toISOString().slice(0, 16));
+    if (!dur || !dur.days) return;
+    const startDate = new Date(s);
+    const end = new Date(startDate);
+    end.setDate(end.getDate() + dur.days);
+    set("endDate", end.toISOString().slice(0, 10));
   }
 
   return (
@@ -248,7 +250,7 @@ function RentalForm({ initial, onSave, onDelete, clients }) {
         value={form.clientName} onChange={e => set("clientName", e.target.value)} />
 
       <label style={labelStyle}>Début de location</label>
-      <input type="datetime-local" style={inputStyle}
+      <input type="date" style={inputStyle}
         value={form.startDate}
         onChange={e => { set("startDate", e.target.value); applyDuration(form.durationPreset, e.target.value); }} />
 
@@ -266,19 +268,20 @@ function RentalForm({ initial, onSave, onDelete, clients }) {
         ))}
       </div>
       {form.durationPreset === "Personnalisé" && (
-        <input type="number" style={inputStyle} placeholder="Durée en heures"
-          value={form.customHours}
+        <input type="number" style={inputStyle} placeholder="Nombre de jours"
+          value={form.customDays}
           onChange={e => {
-            set("customHours", e.target.value);
+            set("customDays", e.target.value);
             if (form.startDate && e.target.value) {
-              const end = new Date(new Date(form.startDate).getTime() + parseFloat(e.target.value) * 36e5);
-              set("endDate", end.toISOString().slice(0, 16));
+              const end = new Date(form.startDate);
+              end.setDate(end.getDate() + parseInt(e.target.value));
+              set("endDate", end.toISOString().slice(0, 10));
             }
           }} />
       )}
 
       <label style={labelStyle}>Fin de location</label>
-      <input type="datetime-local" style={inputStyle}
+      <input type="date" style={inputStyle}
         value={form.endDate} onChange={e => set("endDate", e.target.value)} />
 
       <label style={labelStyle}>Prix de vente / jour (AED)</label>
