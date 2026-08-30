@@ -1,24 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabase";
 
-// ─── PALETTE ───────────────────────────────────────────────────────────────
 const C = {
-  bg: "#0A0A0F",
-  surface: "#12121A",
-  card: "#1A1A26",
-  border: "#2A2A3A",
-  gold: "#C9A84C",
-  goldLight: "#E8C97A",
-  goldDim: "#7A6230",
-  text: "#F0EDE8",
-  muted: "#7A7A9A",
-  green: "#2ECC8A",
-  red: "#E05555",
-  blue: "#5B8DEF",
-  orange: "#E8894A",
+  bg: "#0A0A0F", surface: "#12121A", card: "#1A1A26", border: "#2A2A3A",
+  gold: "#C9A84C", goldLight: "#E8C97A", goldDim: "#7A6230",
+  text: "#F0EDE8", muted: "#7A7A9A", green: "#2ECC8A",
+  red: "#E05555", blue: "#5B8DEF", orange: "#E8894A",
 };
 
-// ─── CARS ──────────────────────────────────────────────────────────────────
 const CAR_BRANDS = {
   Lamborghini: { models: ["Urus", "STO", "Huracán"], color: "#B8952A" },
   Mercedes:    { models: ["Classe G", "GT 63", "GT 63 S"], color: "#7A9EBF" },
@@ -26,7 +15,7 @@ const CAR_BRANDS = {
   Porsche:     { models: ["911", "911 GTS", "GT3 RS"], color: "#2E7D52" },
   "Rolls-Royce": { models: ["Cullinan", "Phantom"], color: "#7B5EA7" },
   "Range Rover":  { models: ["SVR", "Vogue"], color: "#2E6B4F" },
-  Autre:       { models: [], color: "#7A7A9A" },
+  Autre: { models: [], color: "#7A7A9A" },
 };
 
 const DURATIONS = [
@@ -37,28 +26,11 @@ const DURATIONS = [
   { label: "Personnalisé", days: null },
 ];
 
-const STATUS_COLORS = {
-  active: C.green,
-  ended: C.muted,
-  upcoming: C.blue,
-};
-
-const STATUS_LABELS = {
-  active: "En cours",
-  ended: "Terminée",
-  upcoming: "À venir",
-};
-
-// ─── UTILS ─────────────────────────────────────────────────────────────────
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
 function fmtDate(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("fr-FR", {
-    day: "2-digit", month: "short", year: "numeric",
-  });
+  return new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function fmtAED(n) {
@@ -67,46 +39,98 @@ function fmtAED(n) {
 }
 
 function getRentalStatus(rental) {
+  if (rental.closed) return "ended";
   const now = new Date();
   const start = new Date(rental.startDate);
   const end = new Date(rental.endDate);
   if (now < start) return "upcoming";
-  if (now > end) return "ended";
+  if (now > end) return "overdue";
   return "active";
 }
 
 function calcProfit(rental) {
   if (!rental.pricePerDay || !rental.startDate || !rental.endDate) return null;
-  const hours = (new Date(rental.endDate) - new Date(rental.startDate)) / 36e5;
-  const days = hours / 24;
+  const ms = new Date(rental.endDate) - new Date(rental.startDate);
+  const days = ms / (1000 * 60 * 60 * 24);
   const revenue = parseFloat(rental.pricePerDay) * days;
   const cost = parseFloat(rental.costBroker) || 0;
   return { revenue, cost, profit: revenue - cost, days };
 }
 
-// ─── SUPABASE SYNC ─────────────────────────────────────────────────────────
+function getBrandColor(car) {
+  if (!car) return C.muted;
+  for (const [b, { color }] of Object.entries(CAR_BRANDS)) {
+    if (car.startsWith(b)) return color;
+  }
+  return C.muted;
+}
+
+const STATUS_LABELS = { active: "En cours", ended: "Terminée", upcoming: "À venir", overdue: "En retard" };
+const STATUS_COLORS = { active: C.green, ended: C.muted, upcoming: C.blue, overdue: C.red };
+
 const DB_KEY = "nld_main";
-const LS_KEY = "nld_data_v1";
+const LS_KEY = "nld_data_v2";
 
 function loadLocal() {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+  try { const r = localStorage.getItem(LS_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+}
+function saveLocal(d) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(d)); } catch {}
 }
 
-function saveLocal(data) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {}
-}
-
-// ─── TOP LEVEL DATA ─────────────────────────────────────────────────────────
 const DEFAULT_DATA = { rentals: [], clients: [], expenses: [] };
+const PARTNERS = ["JDJ", "NEWLOC"];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// COMPONENTS
-// ═══════════════════════════════════════════════════════════════════════════
+// ─── SHARED STYLES ───────────────────────────────────────────────────────
+const inputStyle = {
+  background: C.surface, border: `1px solid ${C.border}`,
+  borderRadius: 10, color: C.text, padding: "11px 14px",
+  fontSize: 15, width: "100%", boxSizing: "border-box", outline: "none",
+};
+const labelStyle = { color: C.muted, fontSize: 12, fontWeight: 600, letterSpacing: 0.5 };
+const btnPrimary = {
+  background: `linear-gradient(135deg, ${C.gold}, ${C.goldLight})`,
+  border: "none", borderRadius: 12, color: C.bg,
+  padding: "14px", fontSize: 15, fontWeight: 700,
+  cursor: "pointer", width: "100%",
+};
+const btnDanger = {
+  background: "transparent", border: `1px solid ${C.red}`,
+  borderRadius: 12, color: C.red,
+  padding: "12px", fontSize: 14, fontWeight: 600,
+  cursor: "pointer", width: "100%", marginTop: 4,
+};
+const btnSecondary = {
+  background: "transparent", border: `1px solid ${C.border}`,
+  borderRadius: 12, color: C.text,
+  padding: "12px", fontSize: 14, fontWeight: 600,
+  cursor: "pointer", width: "100%", marginTop: 4,
+};
 
-// ─── CAR SELECTOR ──────────────────────────────────────────────────────────
+// ─── MODAL ───────────────────────────────────────────────────────────────
+function Modal({ title, onClose, children }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)",
+      display: "flex", alignItems: "flex-end", justifyContent: "center",
+      zIndex: 1000, backdropFilter: "blur(4px)",
+    }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{
+        background: C.card, border: `1px solid ${C.border}`,
+        borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 540,
+        maxHeight: "90vh", overflow: "auto", padding: "24px 20px 40px",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <span style={{ color: C.gold, fontWeight: 700, fontSize: 18 }}>{title}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─── CAR SELECTOR ────────────────────────────────────────────────────────
 function CarSelector({ value, onChange }) {
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
@@ -132,26 +156,19 @@ function CarSelector({ value, onChange }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {/* Brand picker — colored pills */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {Object.entries(CAR_BRANDS).map(([b, { color }]) => {
           const active = brand === b;
           return (
-            <button key={b} onClick={() => {
-              setBrand(b); setModel(""); setCustom("");
-              update(b, "", "");
-            }} style={{
+            <button key={b} onClick={() => { setBrand(b); setModel(""); setCustom(""); update(b, "", ""); }} style={{
               padding: "6px 14px", borderRadius: 20, border: `2px solid ${active ? color : "transparent"}`,
               cursor: "pointer", fontWeight: 700, fontSize: 13,
               background: active ? color + "33" : C.border,
               color: active ? color : C.muted,
-              transition: "all 0.15s",
             }}>{b}</button>
           );
         })}
       </div>
-
-      {/* Model picker */}
       {brand && brand !== "Autre" && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {CAR_BRANDS[brand].models.map(m => {
@@ -168,17 +185,10 @@ function CarSelector({ value, onChange }) {
           })}
         </div>
       )}
-
       {brand === "Autre" && (
-        <input
-          style={inputStyle}
-          placeholder="Modèle (ex: McLaren 720S)"
-          value={custom}
-          onChange={e => { setCustom(e.target.value); update("Autre", "", e.target.value); }}
-        />
+        <input style={inputStyle} placeholder="Modèle (ex: McLaren 720S)" value={custom}
+          onChange={e => { setCustom(e.target.value); update("Autre", "", e.target.value); }} />
       )}
-
-      {/* Preview */}
       {value && (
         <div style={{
           padding: "8px 12px", borderRadius: 10,
@@ -192,39 +202,15 @@ function CarSelector({ value, onChange }) {
   );
 }
 
-// ─── MODAL ─────────────────────────────────────────────────────────────────
-function Modal({ title, onClose, children }) {
-  return (
-    <div style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)",
-      display: "flex", alignItems: "flex-end", justifyContent: "center",
-      zIndex: 1000, backdropFilter: "blur(4px)",
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
-        background: C.card, border: `1px solid ${C.border}`,
-        borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 540,
-        maxHeight: "90vh", overflow: "auto", padding: "24px 20px 40px",
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <span style={{ color: C.gold, fontWeight: 700, fontSize: 18 }}>{title}</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>✕</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// ─── RENTAL FORM ───────────────────────────────────────────────────────────
-function RentalForm({ initial, onSave, onDelete, clients }) {
+// ─── RENTAL FORM ─────────────────────────────────────────────────────────
+function RentalForm({ initial, onSave, onDelete, onClose, clients }) {
   const [form, setForm] = useState(initial || {
-    car: "", clientName: "", clientId: "",
-    startDate: "", endDate: "",
-    durationPreset: "24h",
-    customDays: "",
+    car: "", clientId: "", clientName: "", clientPhone: "",
+    licenseRef: "", passportRef: "",
+    startDate: "", endDate: "", durationPreset: "1 jour", customDays: "",
     pricePerDay: "", costBroker: "",
     deposit: false, depositAmount: "",
-    notes: "",
+    paymentStatus: "pending", collectedBy: "", notes: "", closed: false,
   });
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
@@ -234,11 +220,23 @@ function RentalForm({ initial, onSave, onDelete, clients }) {
     if (!s) return;
     const dur = DURATIONS.find(d => d.label === preset);
     if (!dur || !dur.days) return;
-    const startDate = new Date(s);
-    const end = new Date(startDate);
+    const end = new Date(s);
     end.setDate(end.getDate() + dur.days);
     set("endDate", end.toISOString().slice(0, 10));
   }
+
+  function selectExistingClient(client) {
+    setForm(f => ({
+      ...f,
+      clientId: client.id,
+      clientName: client.name,
+      clientPhone: client.phone || f.clientPhone,
+      licenseRef: client.licenseRef || f.licenseRef,
+      passportRef: client.passportRef || f.passportRef,
+    }));
+  }
+
+  const existingClient = clients.find(c => c.id === form.clientId);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -246,25 +244,45 @@ function RentalForm({ initial, onSave, onDelete, clients }) {
       <CarSelector value={form.car} onChange={v => set("car", v)} />
 
       <label style={labelStyle}>Client</label>
-      <input style={inputStyle} placeholder="Nom du client"
+      {clients.length > 0 && (
+        <select style={inputStyle} value={form.clientId}
+          onChange={e => {
+            const c = clients.find(cl => cl.id === e.target.value);
+            if (c) selectExistingClient(c);
+            else set("clientId", "");
+          }}>
+          <option value="">— Nouveau client —</option>
+          {clients.map(c => (
+            <option key={c.id} value={c.id}>
+              {c.vip ? "⭐ " : ""}{c.blacklist ? "🚫 " : ""}{c.name}
+            </option>
+          ))}
+        </select>
+      )}
+      <input style={inputStyle} placeholder="Nom complet *"
         value={form.clientName} onChange={e => set("clientName", e.target.value)} />
+      <input style={inputStyle} placeholder="Téléphone (optionnel)"
+        value={form.clientPhone || ""} onChange={e => set("clientPhone", e.target.value)} />
+
+      <label style={labelStyle}>Documents (optionnels)</label>
+      <input style={inputStyle} placeholder="N° Permis de conduire"
+        value={form.licenseRef || ""} onChange={e => set("licenseRef", e.target.value)} />
+      <input style={inputStyle} placeholder="N° Passeport"
+        value={form.passportRef || ""} onChange={e => set("passportRef", e.target.value)} />
 
       <label style={labelStyle}>Début de location</label>
-      <input type="date" style={inputStyle}
-        value={form.startDate}
+      <input type="date" style={inputStyle} value={form.startDate}
         onChange={e => { set("startDate", e.target.value); applyDuration(form.durationPreset, e.target.value); }} />
 
       <label style={labelStyle}>Durée</label>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {DURATIONS.map(d => (
-          <button key={d.label}
-            onClick={() => { set("durationPreset", d.label); applyDuration(d.label, null); }}
-            style={{
-              padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer",
-              background: form.durationPreset === d.label ? C.gold : C.border,
-              color: form.durationPreset === d.label ? C.bg : C.text,
-              fontWeight: 600, fontSize: 13,
-            }}>{d.label}</button>
+          <button key={d.label} onClick={() => { set("durationPreset", d.label); applyDuration(d.label, null); }} style={{
+            padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer",
+            background: form.durationPreset === d.label ? C.gold : C.border,
+            color: form.durationPreset === d.label ? C.bg : C.text,
+            fontWeight: 600, fontSize: 13,
+          }}>{d.label}</button>
         ))}
       </div>
       {form.durationPreset === "Personnalisé" && (
@@ -281,8 +299,8 @@ function RentalForm({ initial, onSave, onDelete, clients }) {
       )}
 
       <label style={labelStyle}>Fin de location</label>
-      <input type="date" style={inputStyle}
-        value={form.endDate} onChange={e => set("endDate", e.target.value)} />
+      <input type="date" style={inputStyle} value={form.endDate}
+        onChange={e => set("endDate", e.target.value)} />
 
       <label style={labelStyle}>Prix de vente / jour (AED)</label>
       <input type="number" style={inputStyle} placeholder="ex: 2500"
@@ -310,7 +328,8 @@ function RentalForm({ initial, onSave, onDelete, clients }) {
           { k: "paid", l: "Payé", c: C.green },
         ].map(s => (
           <button key={s.k} onClick={() => set("paymentStatus", s.k)} style={{
-            flex: 1, padding: "8px 4px", borderRadius: 10, border: `2px solid ${form.paymentStatus === s.k ? s.c : C.border}`,
+            flex: 1, padding: "8px 4px", borderRadius: 10,
+            border: `2px solid ${form.paymentStatus === s.k ? s.c : C.border}`,
             cursor: "pointer", fontWeight: 600, fontSize: 12,
             background: form.paymentStatus === s.k ? s.c + "22" : C.surface,
             color: form.paymentStatus === s.k ? s.c : C.muted,
@@ -318,76 +337,109 @@ function RentalForm({ initial, onSave, onDelete, clients }) {
         ))}
       </div>
 
+      <label style={labelStyle}>Encaissé par *</label>
+      <div style={{ display: "flex", gap: 8 }}>
+        {PARTNERS.map(p => (
+          <button key={p} onClick={() => set("collectedBy", p)} style={{
+            flex: 1, padding: "12px", borderRadius: 10,
+            border: `2px solid ${form.collectedBy === p ? C.gold : C.border}`,
+            cursor: "pointer", fontWeight: 800, fontSize: 15,
+            background: form.collectedBy === p ? C.gold + "22" : C.surface,
+            color: form.collectedBy === p ? C.gold : C.muted,
+          }}>{p}</button>
+        ))}
+      </div>
+      {!form.collectedBy && <div style={{ color: C.red, fontSize: 12 }}>* Obligatoire</div>}
+
       <label style={labelStyle}>Notes</label>
       <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }}
         placeholder="Infos complémentaires..."
         value={form.notes} onChange={e => set("notes", e.target.value)} />
 
-      {/* Live price recap */}
       {form.startDate && form.endDate && form.pricePerDay && (() => {
-        const hours = (new Date(form.endDate) - new Date(form.startDate)) / 36e5;
-        const days = hours / 24;
+        const ms = new Date(form.endDate) - new Date(form.startDate);
+        const days = ms / (1000 * 60 * 60 * 24);
         const revenue = parseFloat(form.pricePerDay) * days;
         const cost = parseFloat(form.costBroker) || 0;
         const profit = revenue - cost;
         return (
-          <div style={{
-            background: C.surface, border: `1px solid ${C.gold}44`,
-            borderRadius: 12, padding: "14px 16px",
-            borderLeft: `3px solid ${C.gold}`,
-          }}>
-            <div style={{ color: C.gold, fontWeight: 700, fontSize: 12, marginBottom: 10, letterSpacing: 1 }}>
-              RÉCAP AUTOMATIQUE
-            </div>
+          <div style={{ background: C.surface, border: `1px solid ${C.gold}44`, borderRadius: 12, padding: "14px 16px", borderLeft: `3px solid ${C.gold}` }}>
+            <div style={{ color: C.gold, fontWeight: 700, fontSize: 12, marginBottom: 10, letterSpacing: 1 }}>RÉCAP AUTOMATIQUE</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <div style={{ color: C.muted, fontSize: 11 }}>Durée</div>
-                <div style={{ color: C.text, fontWeight: 600 }}>{days.toFixed(1)} jour{days > 1 ? "s" : ""}</div>
-              </div>
-              <div>
-                <div style={{ color: C.muted, fontSize: 11 }}>Prix/jour</div>
-                <div style={{ color: C.text, fontWeight: 600 }}>{fmtAED(form.pricePerDay)}</div>
-              </div>
-              <div>
-                <div style={{ color: C.muted, fontSize: 11 }}>Revenu total</div>
-                <div style={{ color: C.gold, fontWeight: 700 }}>{fmtAED(revenue)}</div>
-              </div>
-              <div>
-                <div style={{ color: C.muted, fontSize: 11 }}>Coût broker</div>
-                <div style={{ color: C.orange, fontWeight: 600 }}>{cost ? fmtAED(cost) : "—"}</div>
-              </div>
+              <div><div style={{ color: C.muted, fontSize: 11 }}>Durée</div><div style={{ color: C.text, fontWeight: 600 }}>{days.toFixed(0)} jour{days > 1 ? "s" : ""}</div></div>
+              <div><div style={{ color: C.muted, fontSize: 11 }}>Prix/jour</div><div style={{ color: C.text, fontWeight: 600 }}>{fmtAED(form.pricePerDay)}</div></div>
+              <div><div style={{ color: C.muted, fontSize: 11 }}>Revenu total</div><div style={{ color: C.gold, fontWeight: 700 }}>{fmtAED(revenue)}</div></div>
+              <div><div style={{ color: C.muted, fontSize: 11 }}>Coût broker</div><div style={{ color: C.orange, fontWeight: 600 }}>{cost ? fmtAED(cost) : "—"}</div></div>
             </div>
-            <div style={{
-              marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}`,
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-            }}>
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ color: C.muted, fontSize: 12 }}>Bénéfice net</span>
-              <span style={{
-                color: profit >= 0 ? C.green : C.red,
-                fontWeight: 800, fontSize: 18,
-              }}>{fmtAED(profit)}</span>
+              <span style={{ color: profit >= 0 ? C.green : C.red, fontWeight: 800, fontSize: 18 }}>{fmtAED(profit)}</span>
             </div>
           </div>
         );
       })()}
 
-      <button onClick={() => onSave(form)} style={btnPrimary}>
-        {initial ? "Mettre à jour la location" : "Créer la location"}
+      <button onClick={() => {
+        if (!form.collectedBy) { alert("Veuillez choisir qui a encaissé le client."); return; }
+        onSave(form);
+      }} style={btnPrimary}>
+        {initial ? "Mettre à jour" : "Créer la location"}
       </button>
+      {initial && !initial.closed && (
+        <button onClick={() => onSave({ ...form, closed: true })} style={{
+          ...btnSecondary, borderColor: C.green, color: C.green, marginTop: 4,
+        }}>✓ Clôturer la location</button>
+      )}
       {initial && (
-        <button onClick={() => onDelete(initial.id)} style={btnDanger}>Supprimer la location</button>
+        <button onClick={() => onDelete(initial.id)} style={btnDanger}>Supprimer</button>
       )}
     </div>
   );
 }
 
-// ─── EXPENSE FORM ──────────────────────────────────────────────────────────
+// ─── RENTAL CARD ─────────────────────────────────────────────────────────
+function RentalCard({ rental, onClick }) {
+  const status = getRentalStatus(rental);
+  const profit = calcProfit(rental);
+  const brandColor = getBrandColor(rental.car);
+  const statusColor = STATUS_COLORS[status];
+
+  return (
+    <div onClick={onClick} style={{
+      background: C.card, border: `1px solid ${C.border}`,
+      borderRadius: 14, padding: "14px 16px", marginBottom: 10,
+      cursor: onClick ? "pointer" : "default",
+      borderLeft: `3px solid ${brandColor}`,
+      opacity: status === "ended" ? 0.7 : 1,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ color: C.text, fontWeight: 700, fontSize: 15 }}>{rental.car || "—"}</div>
+          <div style={{ color: C.muted, fontSize: 13, marginTop: 2 }}>{rental.clientName || "—"}</div>
+        </div>
+        <div style={{ background: statusColor + "22", color: statusColor, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600 }}>
+          {STATUS_LABELS[status]}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
+        <div><div style={{ color: C.muted, fontSize: 10 }}>Départ</div><div style={{ color: C.text, fontSize: 12 }}>{fmtDate(rental.startDate)}</div></div>
+        <div><div style={{ color: C.muted, fontSize: 10 }}>Retour</div><div style={{ color: C.text, fontSize: 12 }}>{fmtDate(rental.endDate)}</div></div>
+        {profit && <div><div style={{ color: C.muted, fontSize: 10 }}>Bénéfice</div><div style={{ color: profit.profit >= 0 ? C.green : C.red, fontSize: 12, fontWeight: 700 }}>{fmtAED(profit.profit)}</div></div>}
+        {rental.deposit && <div style={{ color: C.green, fontSize: 11, alignSelf: "flex-end" }}>✓ Caution {rental.depositAmount ? fmtAED(rental.depositAmount) : ""}</div>}
+        {rental.paymentStatus && (() => {
+          const map = { pending: [C.orange, "En attente"], partial: [C.blue, "Acompte"], paid: [C.green, "Payé"] };
+          const [col, lbl] = map[rental.paymentStatus] || [C.muted, ""];
+          return <div style={{ background: col + "22", color: col, borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>{lbl}</div>;
+        })()}
+      </div>
+    </div>
+  );
+}
+
+// ─── EXPENSE FORM ────────────────────────────────────────────────────────
 function ExpenseForm({ initial, onSave, onDelete }) {
-  const [form, setForm] = useState(initial || {
-    label: "", amount: "", date: new Date().toISOString().slice(0, 10), category: "Entretien",
-  });
+  const [form, setForm] = useState(initial || { label: "", amount: "", date: new Date().toISOString().slice(0, 10), category: "Entretien" });
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
-  const cats = ["Entretien", "Broker", "Carburant", "Assurance", "Autre"];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <label style={labelStyle}>Libellé</label>
@@ -398,7 +450,7 @@ function ExpenseForm({ initial, onSave, onDelete }) {
       <input type="date" style={inputStyle} value={form.date} onChange={e => set("date", e.target.value)} />
       <label style={labelStyle}>Catégorie</label>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {cats.map(c => (
+        {["Entretien", "Broker", "Carburant", "Assurance", "Autre"].map(c => (
           <button key={c} onClick={() => set("category", c)} style={{
             padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer",
             background: form.category === c ? C.gold : C.border,
@@ -412,41 +464,183 @@ function ExpenseForm({ initial, onSave, onDelete }) {
   );
 }
 
-// ─── DASHBOARD ─────────────────────────────────────────────────────────────
+// ─── CLIENT FORM ─────────────────────────────────────────────────────────
+function ClientForm({ initial, onSave, onDelete }) {
+  const [form, setForm] = useState(initial || {
+    name: "", phone: "", nationality: "",
+    licenseRef: "", passportRef: "",
+    notes: "", vip: false, blacklist: false,
+  });
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <label style={labelStyle}>Nom complet *</label>
+      <input style={inputStyle} placeholder="Prénom Nom" value={form.name} onChange={e => set("name", e.target.value)} />
+      <label style={labelStyle}>Téléphone</label>
+      <input style={inputStyle} placeholder="+971 50 000 0000" value={form.phone || ""} onChange={e => set("phone", e.target.value)} />
+      <label style={labelStyle}>Nationalité</label>
+      <input style={inputStyle} placeholder="ex: Français, Émirati..." value={form.nationality || ""} onChange={e => set("nationality", e.target.value)} />
+      <label style={labelStyle}>N° Permis de conduire</label>
+      <input style={inputStyle} placeholder="ex: 123456789" value={form.licenseRef || ""} onChange={e => set("licenseRef", e.target.value)} />
+      <label style={labelStyle}>N° Passeport</label>
+      <input style={inputStyle} placeholder="ex: AB1234567" value={form.passportRef || ""} onChange={e => set("passportRef", e.target.value)} />
+      <label style={labelStyle}>Notes internes</label>
+      <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }}
+        placeholder="ex: Paye cash, client régulier..."
+        value={form.notes || ""} onChange={e => set("notes", e.target.value)} />
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={() => set("vip", !form.vip)} style={{
+          flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${form.vip ? C.gold : C.border}`,
+          background: form.vip ? C.gold + "22" : C.surface, color: form.vip ? C.gold : C.muted,
+          cursor: "pointer", fontWeight: 700, fontSize: 13,
+        }}>⭐ VIP</button>
+        <button onClick={() => set("blacklist", !form.blacklist)} style={{
+          flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${form.blacklist ? C.red : C.border}`,
+          background: form.blacklist ? C.red + "22" : C.surface, color: form.blacklist ? C.red : C.muted,
+          cursor: "pointer", fontWeight: 700, fontSize: 13,
+        }}>🚫 Blacklist</button>
+      </div>
+      <button onClick={() => onSave(form)} style={btnPrimary}>{initial ? "Mettre à jour" : "Créer le client"}</button>
+      {initial && <button onClick={() => onDelete(initial.id)} style={btnDanger}>Supprimer le client</button>}
+    </div>
+  );
+}
+
+// ─── CLIENT PROFILE ──────────────────────────────────────────────────────
+function ClientProfile({ client, rentals, onEdit, onClose }) {
+  const clientRentals = rentals.filter(r => r.clientId === client.id || r.clientName === client.name);
+  const totalRevenue = clientRentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.revenue : 0); }, 0);
+  const totalProfit = clientRentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.profit : 0); }, 0);
+
+  const carCount = {};
+  clientRentals.forEach(r => { if (r.car) carCount[r.car] = (carCount[r.car] || 0) + 1; });
+  const favCar = Object.entries(carCount).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  return (
+    <div>
+      <button onClick={onClose} style={{ background: "none", border: "none", color: C.gold, cursor: "pointer", marginBottom: 16, fontSize: 14 }}>
+        ← Retour
+      </button>
+
+      {/* Header */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ color: C.text, fontWeight: 800, fontSize: 20 }}>{client.name}</div>
+              {client.vip && <span style={{ color: C.gold, fontSize: 14 }}>⭐</span>}
+              {client.blacklist && <span style={{ color: C.red, fontSize: 14 }}>🚫</span>}
+            </div>
+            {client.nationality && <div style={{ color: C.muted, fontSize: 13, marginTop: 2 }}>{client.nationality}</div>}
+            {client.phone && <div style={{ color: C.blue, fontSize: 13, marginTop: 4 }}>📞 {client.phone}</div>}
+          </div>
+          <button onClick={onEdit} style={{ background: C.border, border: "none", borderRadius: 8, color: C.text, padding: "6px 12px", cursor: "pointer", fontSize: 12 }}>
+            Modifier
+          </button>
+        </div>
+
+        {(client.licenseRef || client.passportRef) && (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}`, display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {client.licenseRef && (
+              <div style={{ background: C.surface, borderRadius: 8, padding: "6px 10px" }}>
+                <div style={{ color: C.muted, fontSize: 10 }}>PERMIS</div>
+                <div style={{ color: C.text, fontSize: 13, fontWeight: 600 }}>{client.licenseRef}</div>
+              </div>
+            )}
+            {client.passportRef && (
+              <div style={{ background: C.surface, borderRadius: 8, padding: "6px 10px" }}>
+                <div style={{ color: C.muted, fontSize: 10 }}>PASSEPORT</div>
+                <div style={{ color: C.text, fontSize: 13, fontWeight: 600 }}>{client.passportRef}</div>
+              </div>
+            )}
+          </div>
+        )}
+        {client.notes && (
+          <div style={{ marginTop: 10, padding: "8px 10px", background: C.surface, borderRadius: 8, color: C.muted, fontSize: 13, fontStyle: "italic" }}>
+            "{client.notes}"
+          </div>
+        )}
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 10px", textAlign: "center" }}>
+          <div style={{ color: C.gold, fontWeight: 800, fontSize: 20 }}>{clientRentals.length}</div>
+          <div style={{ color: C.muted, fontSize: 10, marginTop: 2 }}>Locations</div>
+        </div>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 10px", textAlign: "center" }}>
+          <div style={{ color: C.green, fontWeight: 700, fontSize: 13 }}>{fmtAED(totalProfit)}</div>
+          <div style={{ color: C.muted, fontSize: 10, marginTop: 2 }}>Bénéfice</div>
+        </div>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 10px", textAlign: "center" }}>
+          <div style={{ color: C.text, fontWeight: 600, fontSize: 11 }}>{favCar ? favCar.split(" ").slice(-1)[0] : "—"}</div>
+          <div style={{ color: C.muted, fontSize: 10, marginTop: 2 }}>Voiture fav.</div>
+        </div>
+      </div>
+
+      {/* Rental history */}
+      <div style={{ color: C.gold, fontWeight: 700, fontSize: 12, letterSpacing: 1, marginBottom: 10 }}>HISTORIQUE</div>
+      {clientRentals.length === 0 && <div style={{ color: C.muted, textAlign: "center", padding: "20px 0" }}>Aucune location</div>}
+      {clientRentals.sort((a, b) => new Date(b.startDate) - new Date(a.startDate)).map(r => {
+        const p = calcProfit(r);
+        const status = getRentalStatus(r);
+        return (
+          <div key={r.id} style={{
+            background: C.card, border: `1px solid ${C.border}`,
+            borderLeft: `3px solid ${getBrandColor(r.car)}`,
+            borderRadius: 12, padding: "12px 14px", marginBottom: 8,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div style={{ color: C.text, fontWeight: 600 }}>{r.car}</div>
+              <div style={{ color: STATUS_COLORS[status], fontSize: 11, fontWeight: 600 }}>{STATUS_LABELS[status]}</div>
+            </div>
+            <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+              <div style={{ color: C.muted, fontSize: 12 }}>{fmtDate(r.startDate)} → {fmtDate(r.endDate)}</div>
+              {p && <div style={{ color: p.profit >= 0 ? C.green : C.red, fontSize: 12, fontWeight: 700 }}>{fmtAED(p.profit)}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────
 function Dashboard({ data }) {
   const now = new Date();
   const active = data.rentals.filter(r => getRentalStatus(r) === "active");
   const upcoming = data.rentals.filter(r => getRentalStatus(r) === "upcoming");
+  const overdue = data.rentals.filter(r => getRentalStatus(r) === "overdue");
 
-  // Monthly stats
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthRentals = data.rentals.filter(r => new Date(r.startDate) >= monthStart);
-  const monthRevenue = monthRentals.reduce((s, r) => {
-    const p = calcProfit(r); return s + (p ? p.revenue : 0);
-  }, 0);
-  const monthCost = monthRentals.reduce((s, r) => {
-    const p = calcProfit(r); return s + (p ? p.cost : 0);
-  }, 0);
-  const monthExpenses = data.expenses
-    .filter(e => new Date(e.date) >= monthStart)
-    .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+  const monthRevenue = monthRentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.revenue : 0); }, 0);
+  const monthCost = monthRentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.cost : 0); }, 0);
+  const monthExpenses = data.expenses.filter(e => new Date(e.date) >= monthStart).reduce((s, e) => s + parseFloat(e.amount || 0), 0);
   const monthProfit = monthRevenue - monthCost - monthExpenses;
 
-  const stats = [
-    { label: "Locations actives", value: active.length, color: C.green, icon: "🚗" },
-    { label: "À venir", value: upcoming.length, color: C.blue, icon: "📅" },
-    { label: "Revenus du mois", value: fmtAED(monthRevenue), color: C.gold, icon: "💰" },
-    { label: "Bénéfice net", value: fmtAED(monthProfit), color: monthProfit >= 0 ? C.green : C.red, icon: "📊" },
-  ];
+  // Balance calculation
+  const allRentals = data.rentals;
+  let jdjOwes = 0, newlocOwes = 0;
+  allRentals.forEach(r => {
+    const p = calcProfit(r);
+    if (!p || !r.collectedBy) return;
+    const share = p.profit / 2;
+    if (r.collectedBy === "JDJ") newlocOwes += share;
+    else if (r.collectedBy === "NEWLOC") jdjOwes += share;
+  });
+  const balance = newlocOwes - jdjOwes;
 
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
-        {stats.map(s => (
-          <div key={s.label} style={{
-            background: C.card, border: `1px solid ${C.border}`,
-            borderRadius: 16, padding: "16px 14px",
-          }}>
+        {[
+          { label: "En cours", value: active.length + overdue.length, color: C.green, icon: "🚗" },
+          { label: "À venir", value: upcoming.length, color: C.blue, icon: "📅" },
+          { label: "Revenus du mois", value: fmtAED(monthRevenue), color: C.gold, icon: "💰" },
+          { label: "Bénéfice net", value: fmtAED(monthProfit), color: monthProfit >= 0 ? C.green : C.red, icon: "📊" },
+        ].map(s => (
+          <div key={s.label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "16px 14px" }}>
             <div style={{ fontSize: 24, marginBottom: 6 }}>{s.icon}</div>
             <div style={{ color: s.color, fontSize: 20, fontWeight: 700 }}>{s.value}</div>
             <div style={{ color: C.muted, fontSize: 12, marginTop: 4 }}>{s.label}</div>
@@ -454,25 +648,59 @@ function Dashboard({ data }) {
         ))}
       </div>
 
+      {/* Balance card */}
+      <div style={{
+        background: C.card, border: `1px solid ${balance >= 0 ? C.green : C.red}44`,
+        borderRadius: 16, padding: "16px", marginBottom: 20,
+        borderLeft: `3px solid ${balance >= 0 ? C.green : C.red}`,
+      }}>
+        <div style={{ color: C.gold, fontWeight: 700, fontSize: 12, letterSpacing: 1, marginBottom: 12 }}>BALANCE</div>
+        {balance === 0 ? (
+          <div style={{ color: C.green, fontWeight: 700, fontSize: 15, textAlign: "center" }}>✓ Vous êtes quittes</div>
+        ) : balance > 0 ? (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ color: C.muted, fontSize: 12 }}>NEWLOC doit à JDJ</div>
+              <div style={{ color: C.green, fontWeight: 800, fontSize: 22 }}>{fmtAED(balance)}</div>
+            </div>
+            <div style={{ fontSize: 30 }}>→</div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ color: C.gold, fontWeight: 800, fontSize: 18 }}>JDJ</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ color: C.muted, fontSize: 12 }}>JDJ doit à NEWLOC</div>
+              <div style={{ color: C.red, fontWeight: 800, fontSize: 22 }}>{fmtAED(Math.abs(balance))}</div>
+            </div>
+            <div style={{ fontSize: 30 }}>→</div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ color: C.blue, fontWeight: 800, fontSize: 18 }}>NEWLOC</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {overdue.length > 0 && (
+        <>
+          <div style={{ color: C.red, fontWeight: 700, marginBottom: 10, fontSize: 13, letterSpacing: 1 }}>⚠ EN RETARD</div>
+          {overdue.map(r => <RentalCard key={r.id} rental={r} />)}
+        </>
+      )}
       {active.length > 0 && (
         <>
-          <div style={{ color: C.gold, fontWeight: 700, marginBottom: 10, fontSize: 14, letterSpacing: 1 }}>
-            EN COURS
-          </div>
-          {active.map(r => <RentalCard key={r.id} rental={r} compact />)}
+          <div style={{ color: C.green, fontWeight: 700, margin: overdue.length ? "16px 0 10px" : "0 0 10px", fontSize: 13, letterSpacing: 1 }}>EN COURS</div>
+          {active.map(r => <RentalCard key={r.id} rental={r} />)}
         </>
       )}
-
       {upcoming.length > 0 && (
         <>
-          <div style={{ color: C.blue, fontWeight: 700, margin: "16px 0 10px", fontSize: 14, letterSpacing: 1 }}>
-            À VENIR
-          </div>
-          {upcoming.map(r => <RentalCard key={r.id} rental={r} compact />)}
+          <div style={{ color: C.blue, fontWeight: 700, margin: "16px 0 10px", fontSize: 13, letterSpacing: 1 }}>À VENIR</div>
+          {upcoming.map(r => <RentalCard key={r.id} rental={r} />)}
         </>
       )}
-
-      {active.length === 0 && upcoming.length === 0 && (
+      {active.length === 0 && upcoming.length === 0 && overdue.length === 0 && (
         <div style={{ textAlign: "center", color: C.muted, padding: "40px 0", fontSize: 15 }}>
           Aucune location active.<br />Appuie sur + pour en créer une.
         </div>
@@ -481,82 +709,7 @@ function Dashboard({ data }) {
   );
 }
 
-// ─── RENTAL CARD ───────────────────────────────────────────────────────────
-function getBrandColor(car) {
-  if (!car) return C.muted;
-  for (const [b, { color }] of Object.entries(CAR_BRANDS)) {
-    if (car.startsWith(b)) return color;
-  }
-  return C.muted;
-}
-
-function RentalCard({ rental, compact, onClick }) {
-  const status = getRentalStatus(rental);
-  const profit = calcProfit(rental);
-  const color = getBrandColor(rental.car);
-
-  return (
-    <div onClick={onClick} style={{
-      background: C.card, border: `1px solid ${C.border}`,
-      borderRadius: 14, padding: "14px 16px", marginBottom: 10,
-      cursor: onClick ? "pointer" : "default",
-      borderLeft: `3px solid ${color}`,
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <div style={{ color: C.text, fontWeight: 700, fontSize: 16 }}>{rental.car || "—"}</div>
-          <div style={{ color: C.muted, fontSize: 13, marginTop: 2 }}>{rental.clientName || "—"}</div>
-        </div>
-        <div style={{
-          background: color + "22", color, borderRadius: 20,
-          padding: "3px 10px", fontSize: 12, fontWeight: 600,
-        }}>{STATUS_LABELS[status]}</div>
-      </div>
-
-      <div style={{ display: "flex", gap: 16, marginTop: 10, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ color: C.muted, fontSize: 11 }}>Départ</div>
-          <div style={{ color: C.text, fontSize: 13 }}>{fmtDate(rental.startDate)}</div>
-        </div>
-        <div>
-          <div style={{ color: C.muted, fontSize: 11 }}>Retour</div>
-          <div style={{ color: C.text, fontSize: 13 }}>{fmtDate(rental.endDate)}</div>
-        </div>
-        {!compact && profit && (
-          <>
-            <div>
-              <div style={{ color: C.muted, fontSize: 11 }}>Revenu</div>
-              <div style={{ color: C.gold, fontSize: 13 }}>{fmtAED(profit.revenue)}</div>
-            </div>
-            <div>
-              <div style={{ color: C.muted, fontSize: 11 }}>Bénéfice</div>
-              <div style={{ color: profit.profit >= 0 ? C.green : C.red, fontSize: 13, fontWeight: 700 }}>
-                {fmtAED(profit.profit)}
-              </div>
-            </div>
-          </>
-        )}
-        {rental.deposit && (
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ fontSize: 11, color: C.green }}>✓ Caution</span>
-            {rental.depositAmount && <span style={{ color: C.green, fontSize: 11 }}>{fmtAED(rental.depositAmount)}</span>}
-          </div>
-        )}
-        {rental.paymentStatus && (() => {
-          const map = { pending: [C.orange, "En attente"], partial: [C.blue, "Acompte"], paid: [C.green, "Payé"] };
-          const [col, lbl] = map[rental.paymentStatus] || [C.muted, "—"];
-          return (
-            <div style={{ background: col + "22", color: col, borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>
-              {lbl}
-            </div>
-          );
-        })()}
-      </div>
-    </div>
-  );
-}
-
-// ─── RENTALS VIEW ──────────────────────────────────────────────────────────
+// ─── RENTALS VIEW ────────────────────────────────────────────────────────
 function RentalsView({ data, onUpdate }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -568,10 +721,22 @@ function RentalsView({ data, onUpdate }) {
   });
 
   function saveRental(form) {
+    let newClients = [...data.clients];
+    // Auto-créer le client si nouveau
+    if (!form.clientId && form.clientName) {
+      const existing = data.clients.find(c => c.name.toLowerCase() === form.clientName.toLowerCase());
+      if (existing) {
+        form.clientId = existing.id;
+      } else {
+        const newClient = { id: uid(), name: form.clientName, phone: form.clientPhone || "", licenseRef: form.licenseRef || "", passportRef: form.passportRef || "" };
+        newClients = [...data.clients, newClient];
+        form.clientId = newClient.id;
+      }
+    }
     const rentals = editing
       ? data.rentals.map(r => r.id === editing.id ? { ...form, id: r.id } : r)
       : [...data.rentals, { ...form, id: uid() }];
-    onUpdate({ ...data, rentals });
+    onUpdate({ ...data, rentals, clients: newClients });
     setShowForm(false); setEditing(null);
   }
 
@@ -580,17 +745,16 @@ function RentalsView({ data, onUpdate }) {
     setShowForm(false); setEditing(null);
   }
 
-  const tabs = [
-    { k: "all", l: "Toutes" },
-    { k: "active", l: "En cours" },
-    { k: "upcoming", l: "À venir" },
-    { k: "ended", l: "Terminées" },
-  ];
-
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
-        {tabs.map(t => (
+        {[
+          { k: "all", l: "Toutes" },
+          { k: "active", l: "En cours" },
+          { k: "overdue", l: "En retard" },
+          { k: "upcoming", l: "À venir" },
+          { k: "ended", l: "Terminées" },
+        ].map(t => (
           <button key={t.k} onClick={() => setFilter(t.k)} style={{
             padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer",
             background: filter === t.k ? C.gold : C.border,
@@ -599,31 +763,26 @@ function RentalsView({ data, onUpdate }) {
           }}>{t.l}</button>
         ))}
       </div>
-
-      {filtered.length === 0 && (
-        <div style={{ textAlign: "center", color: C.muted, padding: "40px 0" }}>Aucune location</div>
-      )}
+      {filtered.length === 0 && <div style={{ textAlign: "center", color: C.muted, padding: "40px 0" }}>Aucune location</div>}
       {filtered.map(r => (
         <RentalCard key={r.id} rental={r} onClick={() => { setEditing(r); setShowForm(true); }} />
       ))}
-
       <button onClick={() => { setEditing(null); setShowForm(true); }} style={{
         ...btnPrimary, position: "fixed", bottom: 90, right: 20,
         width: 56, height: 56, borderRadius: "50%", fontSize: 28,
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: 0, boxShadow: `0 4px 20px ${C.gold}55`,
       }}>+</button>
-
       {showForm && (
         <Modal title={editing ? "Modifier la location" : "Nouvelle location"} onClose={() => { setShowForm(false); setEditing(null); }}>
-          <RentalForm initial={editing} onSave={saveRental} onDelete={deleteRental} clients={data.clients} />
+          <RentalForm initial={editing} onSave={saveRental} onDelete={deleteRental} onClose={() => { setShowForm(false); setEditing(null); }} clients={data.clients} />
         </Modal>
       )}
     </div>
   );
 }
 
-// ─── ACCOUNTING VIEW ───────────────────────────────────────────────────────
+// ─── ACCOUNTING VIEW ─────────────────────────────────────────────────────
 function AccountingView({ data, onUpdate }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -632,12 +791,7 @@ function AccountingView({ data, onUpdate }) {
   const [y, m] = month.split("-").map(Number);
   const monthStart = new Date(y, m - 1, 1);
   const monthEnd = new Date(y, m, 1);
-
-  const monthRentals = data.rentals.filter(r => {
-    const s = new Date(r.startDate);
-    return s >= monthStart && s < monthEnd;
-  });
-
+  const monthRentals = data.rentals.filter(r => { const s = new Date(r.startDate); return s >= monthStart && s < monthEnd; });
   const revenue = monthRentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.revenue : 0); }, 0);
   const brokerCost = monthRentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.cost : 0); }, 0);
   const expenses = data.expenses.filter(e => e.date && e.date.startsWith(month));
@@ -652,21 +806,14 @@ function AccountingView({ data, onUpdate }) {
     setShowForm(false); setEditing(null);
   }
 
-  function deleteExpense(id) {
-    onUpdate({ ...data, expenses: data.expenses.filter(e => e.id !== id) });
-    setShowForm(false); setEditing(null);
-  }
-
   return (
     <div>
-      <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-        style={{ ...inputStyle, marginBottom: 16 }} />
-
+      <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ ...inputStyle, marginBottom: 16 }} />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
         {[
-          { l: "Revenus locations", v: revenue, c: C.gold },
+          { l: "Revenus", v: revenue, c: C.gold },
           { l: "Coût brokers", v: brokerCost, c: C.orange },
-          { l: "Autres dépenses", v: expenseTotal, c: C.red },
+          { l: "Dépenses", v: expenseTotal, c: C.red },
           { l: "Bénéfice net", v: profit, c: profit >= 0 ? C.green : C.red },
         ].map(s => (
           <div key={s.l} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 12px" }}>
@@ -675,31 +822,23 @@ function AccountingView({ data, onUpdate }) {
           </div>
         ))}
       </div>
-
-      <div style={{ color: C.gold, fontWeight: 700, marginBottom: 10, fontSize: 13, letterSpacing: 1 }}>
-        LOCATIONS DU MOIS ({monthRentals.length})
-      </div>
+      <div style={{ color: C.gold, fontWeight: 700, marginBottom: 10, fontSize: 12, letterSpacing: 1 }}>LOCATIONS ({monthRentals.length})</div>
       {monthRentals.map(r => {
         const p = calcProfit(r);
         return (
           <div key={r.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
             <div>
               <div style={{ color: C.text, fontWeight: 600 }}>{r.car}</div>
-              <div style={{ color: C.muted, fontSize: 12 }}>{r.clientName} · {p ? p.days.toFixed(1) + "j" : "—"}</div>
+              <div style={{ color: C.muted, fontSize: 12 }}>{r.clientName} · {p ? p.days.toFixed(0) + "j" : "—"}</div>
             </div>
-            {p && (
-              <div style={{ textAlign: "right" }}>
-                <div style={{ color: C.gold, fontSize: 14 }}>{fmtAED(p.revenue)}</div>
-                <div style={{ color: p.profit >= 0 ? C.green : C.red, fontSize: 12 }}>{fmtAED(p.profit)}</div>
-              </div>
-            )}
+            {p && <div style={{ textAlign: "right" }}>
+              <div style={{ color: C.gold, fontSize: 14 }}>{fmtAED(p.revenue)}</div>
+              <div style={{ color: p.profit >= 0 ? C.green : C.red, fontSize: 12 }}>{fmtAED(p.profit)}</div>
+            </div>}
           </div>
         );
       })}
-
-      <div style={{ color: C.muted, fontWeight: 700, margin: "16px 0 10px", fontSize: 13, letterSpacing: 1 }}>
-        DÉPENSES DU MOIS
-      </div>
+      <div style={{ color: C.muted, fontWeight: 700, margin: "16px 0 10px", fontSize: 12, letterSpacing: 1 }}>DÉPENSES</div>
       {expenses.map(e => (
         <div key={e.id} onClick={() => { setEditing(e); setShowForm(true); }}
           style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", cursor: "pointer" }}>
@@ -711,91 +850,101 @@ function AccountingView({ data, onUpdate }) {
         </div>
       ))}
       {expenses.length === 0 && <div style={{ color: C.muted, textAlign: "center", padding: "20px 0" }}>Aucune dépense ce mois</div>}
-
       <button onClick={() => { setEditing(null); setShowForm(true); }} style={{
         ...btnPrimary, position: "fixed", bottom: 90, right: 20,
         width: 56, height: 56, borderRadius: "50%", fontSize: 28,
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: 0, boxShadow: `0 4px 20px ${C.gold}55`,
       }}>+</button>
-
       {showForm && (
-        <Modal title={editing ? "Modifier la dépense" : "Nouvelle dépense"} onClose={() => { setShowForm(false); setEditing(null); }}>
-          <ExpenseForm initial={editing} onSave={saveExpense} onDelete={deleteExpense} />
+        <Modal title={editing ? "Modifier" : "Nouvelle dépense"} onClose={() => { setShowForm(false); setEditing(null); }}>
+          <ExpenseForm initial={editing} onSave={saveExpense} onDelete={id => { onUpdate({ ...data, expenses: data.expenses.filter(e => e.id !== id) }); setShowForm(false); setEditing(null); }} />
         </Modal>
       )}
     </div>
   );
 }
 
-// ─── CLIENTS VIEW ──────────────────────────────────────────────────────────
-function ClientsView({ data }) {
-  const clientMap = {};
-  data.rentals.forEach(r => {
-    if (!r.clientName) return;
-    if (!clientMap[r.clientName]) clientMap[r.clientName] = { name: r.clientName, rentals: [] };
-    clientMap[r.clientName].rentals.push(r);
-  });
-  const clients = Object.values(clientMap).sort((a, b) => b.rentals.length - a.rentals.length);
+// ─── CLIENTS VIEW ────────────────────────────────────────────────────────
+function ClientsView({ data, onUpdate }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [profile, setProfile] = useState(null);
+
+  if (profile) {
+    const client = data.clients.find(c => c.id === profile);
+    if (client) return (
+      <ClientProfile
+        client={client}
+        rentals={data.rentals}
+        onEdit={() => { setEditing(client); setShowForm(true); }}
+        onClose={() => setProfile(null)}
+      />
+    );
+  }
+
+  function saveClient(form) {
+    const clients = editing
+      ? data.clients.map(c => c.id === editing.id ? { ...form, id: c.id } : c)
+      : [...data.clients, { ...form, id: uid() }];
+    onUpdate({ ...data, clients });
+    setShowForm(false); setEditing(null);
+  }
+
+  function deleteClient(id) {
+    onUpdate({ ...data, clients: data.clients.filter(c => c.id !== id) });
+    setShowForm(false); setEditing(null);
+  }
 
   return (
     <div>
-      {clients.length === 0 && (
+      {data.clients.length === 0 && (
         <div style={{ textAlign: "center", color: C.muted, padding: "40px 0" }}>
-          Les clients apparaîtront ici automatiquement.<br />Crée d'abord des locations.
+          Aucun client.<br />Les clients sont créés automatiquement lors d'une location,<br />ou appuie sur + pour en ajouter un.
         </div>
       )}
-      {clients.map(c => {
-        const totalRevenue = c.rentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.profit : 0); }, 0);
+      {data.clients.map(c => {
+        const clientRentals = data.rentals.filter(r => r.clientId === c.id || r.clientName === c.name);
+        const totalProfit = clientRentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.profit : 0); }, 0);
         return (
-          <div key={c.name} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px", marginBottom: 10 }}>
+          <div key={c.id} onClick={() => setProfile(c.id)} style={{
+            background: C.card, border: `1px solid ${C.border}`,
+            borderLeft: `3px solid ${c.vip ? C.gold : c.blacklist ? C.red : C.border}`,
+            borderRadius: 14, padding: "14px 16px", marginBottom: 10, cursor: "pointer",
+          }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <div style={{ color: C.text, fontWeight: 700, fontSize: 16 }}>{c.name}</div>
-                <div style={{ color: C.muted, fontSize: 13 }}>{c.rentals.length} location{c.rentals.length > 1 ? "s" : ""}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ color: C.text, fontWeight: 700, fontSize: 15 }}>{c.name}</div>
+                  {c.vip && <span style={{ fontSize: 12 }}>⭐</span>}
+                  {c.blacklist && <span style={{ fontSize: 12 }}>🚫</span>}
+                </div>
+                <div style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>{clientRentals.length} location{clientRentals.length > 1 ? "s" : ""}{c.nationality ? ` · ${c.nationality}` : ""}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ color: C.gold, fontWeight: 700 }}>{fmtAED(totalRevenue)}</div>
-                <div style={{ color: C.muted, fontSize: 11 }}>bénéfice total</div>
+                <div style={{ color: C.gold, fontWeight: 700, fontSize: 14 }}>{fmtAED(totalProfit)}</div>
+                <div style={{ color: C.muted, fontSize: 10 }}>bénéfice total</div>
               </div>
-            </div>
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-              {c.rentals.map(r => (
-                <div key={r.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", background: C.surface, borderRadius: 8 }}>
-                  <span style={{ color: C.muted, fontSize: 13 }}>{r.car}</span>
-                  <span style={{ color: C.text, fontSize: 13 }}>{fmtDate(r.startDate)}</span>
-                </div>
-              ))}
             </div>
           </div>
         );
       })}
+      <button onClick={() => { setEditing(null); setShowForm(true); }} style={{
+        ...btnPrimary, position: "fixed", bottom: 90, right: 20,
+        width: 56, height: 56, borderRadius: "50%", fontSize: 28,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 0, boxShadow: `0 4px 20px ${C.gold}55`,
+      }}>+</button>
+      {showForm && (
+        <Modal title={editing ? "Modifier le client" : "Nouveau client"} onClose={() => { setShowForm(false); setEditing(null); setProfile(null); }}>
+          <ClientForm initial={editing} onSave={saveClient} onDelete={deleteClient} />
+        </Modal>
+      )}
     </div>
   );
 }
 
-// ─── SHARED STYLES ─────────────────────────────────────────────────────────
-const inputStyle = {
-  background: C.surface, border: `1px solid ${C.border}`,
-  borderRadius: 10, color: C.text, padding: "11px 14px",
-  fontSize: 15, width: "100%", boxSizing: "border-box", outline: "none",
-};
-const selStyle = { ...inputStyle };
-const labelStyle = { color: C.muted, fontSize: 12, fontWeight: 600, letterSpacing: 0.5 };
-const btnPrimary = {
-  background: `linear-gradient(135deg, ${C.gold}, ${C.goldLight})`,
-  border: "none", borderRadius: 12, color: C.bg,
-  padding: "14px", fontSize: 15, fontWeight: 700,
-  cursor: "pointer", width: "100%",
-};
-const btnDanger = {
-  background: "transparent", border: `1px solid ${C.red}`,
-  borderRadius: 12, color: C.red,
-  padding: "12px", fontSize: 14, fontWeight: 600,
-  cursor: "pointer", width: "100%", marginTop: 4,
-};
-
-// ─── NAV TABS ──────────────────────────────────────────────────────────────
+// ─── NAV ─────────────────────────────────────────────────────────────────
 const NAV = [
   { id: "dashboard", icon: "◈", label: "Accueil" },
   { id: "rentals", icon: "🚗", label: "Locations" },
@@ -803,16 +952,13 @@ const NAV = [
   { id: "clients", icon: "👤", label: "Clients" },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// APP ROOT
-// ═══════════════════════════════════════════════════════════════════════════
+// ─── APP ROOT ────────────────────────────────────────────────────────────
 export default function App() {
   const [data, setData] = useState(DEFAULT_DATA);
   const [tab, setTab] = useState("dashboard");
-  const [syncStatus, setSyncStatus] = useState("idle"); // idle | saving | saved | error
+  const [syncStatus, setSyncStatus] = useState("idle");
   const saveTimer = useRef(null);
 
-  // Load — Supabase en priorité, polling toutes les 10s pour sync temps réel
   useEffect(() => {
     const local = loadLocal();
     if (local) setData(local);
@@ -827,7 +973,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Save
   const persist = useCallback((newData) => {
     saveLocal(newData);
     setSyncStatus("saving");
@@ -839,71 +984,34 @@ export default function App() {
     }, 700);
   }, []);
 
-  function update(newData) {
-    setData(newData);
-    persist(newData);
-  }
+  function update(newData) { setData(newData); persist(newData); }
 
   const syncIcon = { idle: "✓", saving: "↑", saved: "✓", error: "!" };
   const syncColor = { idle: C.muted, saving: C.gold, saved: C.green, error: C.red };
 
   return (
-    <div style={{
-      background: C.bg, minHeight: "100vh", color: C.text,
-      fontFamily: "'Inter', -apple-system, sans-serif",
-      maxWidth: 540, margin: "0 auto", paddingBottom: 80,
-    }}>
-      {/* Header */}
-      <div style={{
-        padding: "16px 20px 12px",
-        background: C.surface,
-        borderBottom: `1px solid ${C.border}`,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        position: "sticky", top: 0, zIndex: 100,
-      }}>
+    <div style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "'Inter', -apple-system, sans-serif", maxWidth: 540, margin: "0 auto", paddingBottom: 80 }}>
+      <div style={{ padding: "16px 20px 12px", background: C.surface, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100 }}>
         <div>
           <div style={{ fontSize: 11, color: C.goldDim, fontWeight: 700, letterSpacing: 2 }}>NEWS LOC</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: C.gold, lineHeight: 1.1 }}>DUBAI</div>
         </div>
-        <div style={{
-          fontSize: 12, color: syncColor[syncStatus],
-          background: C.bg, borderRadius: 20, padding: "4px 12px",
-          border: `1px solid ${C.border}`,
-        }}>
-          {syncIcon[syncStatus]} {syncStatus === "saving" ? "Sync..." : syncStatus === "error" ? "Erreur sync" : "Synchronisé"}
+        <div style={{ fontSize: 12, color: syncColor[syncStatus], background: C.bg, borderRadius: 20, padding: "4px 12px", border: `1px solid ${C.border}` }}>
+          {syncIcon[syncStatus]} {syncStatus === "saving" ? "Sync..." : syncStatus === "error" ? "Erreur" : "Synchronisé"}
         </div>
       </div>
-
-      {/* Content */}
       <div style={{ padding: "20px 16px" }}>
         {tab === "dashboard" && <Dashboard data={data} />}
         {tab === "rentals" && <RentalsView data={data} onUpdate={update} />}
         {tab === "accounting" && <AccountingView data={data} onUpdate={update} />}
-        {tab === "clients" && <ClientsView data={data} />}
+        {tab === "clients" && <ClientsView data={data} onUpdate={update} />}
       </div>
-
-      {/* Bottom Nav */}
-      <div style={{
-        position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
-        width: "100%", maxWidth: 540,
-        background: C.surface, borderTop: `1px solid ${C.border}`,
-        display: "flex",
-      }}>
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 540, background: C.surface, borderTop: `1px solid ${C.border}`, display: "flex" }}>
         {NAV.map(n => (
-          <button key={n.id} onClick={() => setTab(n.id)} style={{
-            flex: 1, padding: "10px 0 14px", background: "none", border: "none",
-            cursor: "pointer", display: "flex", flexDirection: "column",
-            alignItems: "center", gap: 3,
-          }}>
+          <button key={n.id} onClick={() => setTab(n.id)} style={{ flex: 1, padding: "10px 0 14px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, position: "relative" }}>
             <span style={{ fontSize: 20 }}>{n.icon}</span>
-            <span style={{
-              fontSize: 10, fontWeight: 600,
-              color: tab === n.id ? C.gold : C.muted,
-              letterSpacing: 0.3,
-            }}>{n.label}</span>
-            {tab === n.id && (
-              <div style={{ width: 20, height: 2, background: C.gold, borderRadius: 1, position: "absolute", bottom: 6 }} />
-            )}
+            <span style={{ fontSize: 10, fontWeight: 600, color: tab === n.id ? C.gold : C.muted }}>{n.label}</span>
+            {tab === n.id && <div style={{ width: 20, height: 2, background: C.gold, borderRadius: 1, position: "absolute", bottom: 6 }} />}
           </button>
         ))}
       </div>
