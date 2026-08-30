@@ -809,14 +809,19 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState("idle"); // idle | saving | saved | error
   const saveTimer = useRef(null);
 
-  // Load
+  // Load — Supabase en priorité, polling toutes les 10s pour sync temps réel
   useEffect(() => {
     const local = loadLocal();
     if (local) setData(local);
-    supabase.from("nld_data").select("data").eq("id", DB_KEY).single()
-      .then(({ data: row }) => {
-        if (row?.data) { setData(row.data); saveLocal(row.data); }
-      });
+    const fetchRemote = () => {
+      supabase.from("nld_data").select("data").eq("id", DB_KEY).single()
+        .then(({ data: row }) => {
+          if (row?.data) { setData(row.data); saveLocal(row.data); }
+        });
+    };
+    fetchRemote();
+    const interval = setInterval(fetchRemote, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   // Save
