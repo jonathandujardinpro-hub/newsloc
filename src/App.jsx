@@ -620,16 +620,21 @@ function Dashboard({ data }) {
   const monthProfit = monthRevenue - monthCost - monthExpenses;
 
   // Balance calculation
+  // Si NEWLOC encaisse → il garde la part de JDJ → JDJ doit récupérer de NEWLOC
+  // Si JDJ encaisse → il garde la part de NEWLOC → NEWLOC doit récupérer de JDJ
   const allRentals = data.rentals;
-  let jdjOwes = 0, newlocOwes = 0;
+  let newlocHoldsForJDJ = 0; // NEWLOC a encaissé → doit rendre à JDJ
+  let jdjHoldsForNEWLOC = 0; // JDJ a encaissé → doit rendre à NEWLOC
   allRentals.forEach(r => {
     const p = calcProfit(r);
     if (!p || !r.collectedBy) return;
     const share = p.profit / 2;
-    if (r.collectedBy === "JDJ") newlocOwes += share;
-    else if (r.collectedBy === "NEWLOC") jdjOwes += share;
+    if (r.collectedBy === "NEWLOC") newlocHoldsForJDJ += share;
+    else if (r.collectedBy === "JDJ") jdjHoldsForNEWLOC += share;
   });
-  const balance = newlocOwes - jdjOwes;
+  // balance > 0 = NEWLOC doit à JDJ
+  // balance < 0 = JDJ doit à NEWLOC
+  const balance = newlocHoldsForJDJ - jdjHoldsForNEWLOC;
 
   return (
     <div>
