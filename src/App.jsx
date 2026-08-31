@@ -934,7 +934,7 @@ function ExportView({ data }) {
     return { start, end };
   }
 
-  function generatePDF() {
+  async function generatePDF() {
     setGenerating(true);
     const { start, end } = getDateRange();
     const rentals = data.rentals.filter(r => {
@@ -946,92 +946,179 @@ function ExportView({ data }) {
     const cost = rentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.cost : 0); }, 0);
     const profit = revenue - cost;
     const periodLabel = { month: "Mois en cours", quarter: "Trimestre", "6months": "6 mois", year: "12 mois" }[period];
+    const reportTitle = reportType === "financial" ? "Bilan Financier" : reportType === "rentals" ? "Rapport des Locations" : "Rapport par Client";
 
-    const html = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<style>
-  body { font-family: Arial, sans-serif; margin: 40px; color: #222; }
-  .header { text-align: center; border-bottom: 3px solid #C9A84C; padding-bottom: 20px; margin-bottom: 30px; }
-  .company-name { font-size: 22px; font-weight: bold; color: #C9A84C; }
-  .company-ar { font-size: 16px; color: #666; direction: rtl; }
-  .company-info { font-size: 12px; color: #888; margin-top: 8px; }
-  .report-title { font-size: 18px; font-weight: bold; margin: 20px 0 5px; }
-  .period { color: #888; font-size: 13px; margin-bottom: 20px; }
-  .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 30px; }
-  .stat { background: #f8f6f0; border: 1px solid #e8d9a0; border-radius: 8px; padding: 15px; text-align: center; }
-  .stat-value { font-size: 20px; font-weight: bold; color: #C9A84C; }
-  .stat-label { font-size: 11px; color: #888; margin-top: 4px; }
-  .profit-value { color: #2ECC8A; }
-  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-  th { background: #C9A84C; color: white; padding: 10px; text-align: left; font-size: 12px; }
-  td { padding: 9px 10px; font-size: 12px; border-bottom: 1px solid #eee; }
-  tr:nth-child(even) td { background: #faf9f5; }
-  .footer { margin-top: 40px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 11px; color: #aaa; text-align: center; }
-  .section-title { font-weight: bold; font-size: 14px; color: #C9A84C; margin: 25px 0 10px; border-bottom: 1px solid #e8d9a0; padding-bottom: 5px; }
-</style>
-</head>
-<body>
-<div class="header">
-  <div class="company-name">${COMPANY.name}</div>
-  <div class="company-ar">${COMPANY.nameAr}</div>
-  <div class="company-info">
-    License No. ${COMPANY.license} &nbsp;|&nbsp; Register No. ${COMPANY.register}<br>
-    ${COMPANY.address}<br>
-    Tel: ${COMPANY.phone} &nbsp;|&nbsp; ${COMPANY.email}<br>
-    License Expiry: ${COMPANY.expiry}
-  </div>
-</div>
+    const { jsPDF } = await import("https://esm.sh/jspdf@2.5.1");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const W = 210, margin = 15;
+    let y = 15;
 
-<div class="report-title">${reportType === "financial" ? "Bilan Financier" : reportType === "rentals" ? "Rapport des Locations" : "Rapport par Client"}</div>
-<div class="period">Période : ${periodLabel} &nbsp;|&nbsp; Généré le ${new Date().toLocaleDateString("fr-FR")}</div>
+    const gold = [201, 168, 76];
+    const dark = [30, 30, 40];
+    const muted = [120, 120, 140];
+    const green = [46, 204, 138];
+    const red = [224, 85, 85];
 
-${reportType === "financial" ? `
-<div class="stats">
-  <div class="stat"><div class="stat-value">${rentals.length}</div><div class="stat-label">Locations</div></div>
-  <div class="stat"><div class="stat-value">${Number(revenue).toLocaleString("fr-FR")} AED</div><div class="stat-label">Revenus bruts</div></div>
-  <div class="stat"><div class="stat-value profit-value">${Number(profit).toLocaleString("fr-FR")} AED</div><div class="stat-label">Bénéfice net</div></div>
-</div>
-<div class="section-title">Détail des locations</div>
-<table>
-  <tr><th>Véhicule</th><th>Client</th><th>Départ</th><th>Retour</th><th>Jours</th><th>Revenu</th><th>Broker</th><th>Bénéfice</th><th>Encaissé</th></tr>
-  ${rentals.map(r => {
-    const p = calcProfit(r);
-    return `<tr><td>${r.car || "—"}</td><td>${r.clientName || "—"}</td><td>${fmtDate(r.startDate)}</td><td>${fmtDate(r.endDate)}</td><td>${p ? p.days.toFixed(0) : "—"}</td><td>${p ? Number(p.revenue).toLocaleString("fr-FR") + " AED" : "—"}</td><td>${p ? Number(p.cost).toLocaleString("fr-FR") + " AED" : "—"}</td><td style="color:${p && p.profit >= 0 ? "#2ECC8A" : "#E05555"};font-weight:bold">${p ? Number(p.profit).toLocaleString("fr-FR") + " AED" : "—"}</td><td>${r.collectedBy || "—"}</td></tr>`;
-  }).join("")}
-</table>
-` : reportType === "rentals" ? `
-<table>
-  <tr><th>Véhicule</th><th>Client</th><th>Tél</th><th>Permis</th><th>Passeport</th><th>Départ</th><th>Retour</th><th>Prix/j</th><th>Caution</th><th>Paiement</th></tr>
-  ${rentals.map(r => `<tr><td>${r.car || "—"}</td><td>${r.clientName || "—"}</td><td>${r.clientPhone || "—"}</td><td>${r.licenseRef || "—"}</td><td>${r.passportRef || "—"}</td><td>${fmtDate(r.startDate)}</td><td>${fmtDate(r.endDate)}</td><td>${r.pricePerDay ? Number(r.pricePerDay).toLocaleString("fr-FR") + " AED" : "—"}</td><td>${r.deposit ? "✓ " + (r.depositAmount ? Number(r.depositAmount).toLocaleString("fr-FR") + " AED" : "") : "Non"}</td><td>${r.paymentStatus === "paid" ? "Payé" : r.paymentStatus === "partial" ? "Acompte" : "En attente"}</td></tr>`).join("")}
-</table>
-` : `
-${Object.values(data.clients.reduce((acc, c) => { acc[c.id] = c; return acc; }, {})).map(c => {
-  const cr = data.rentals.filter(r => r.clientId === c.id || r.clientName === c.name).filter(r => { const d = new Date(r.startDate); return d >= start && d <= end; });
-  if (cr.length === 0) return "";
-  const tp = cr.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.profit : 0); }, 0);
-  return `<div class="section-title">${c.name}${c.vip ? " ⭐" : ""}${c.nationality ? " · " + c.nationality : ""}</div>
-  <p style="font-size:12px;color:#666">${c.phone ? "Tel: " + c.phone + " | " : ""}${c.licenseRef ? "Permis: " + c.licenseRef + " | " : ""}${c.passportRef ? "Passeport: " + c.passportRef : ""}</p>
-  <p style="font-size:13px;font-weight:bold;color:#2ECC8A">Bénéfice total : ${Number(tp).toLocaleString("fr-FR")} AED</p>
-  <table><tr><th>Véhicule</th><th>Départ</th><th>Retour</th><th>Revenu</th><th>Bénéfice</th></tr>
-  ${cr.map(r => { const p = calcProfit(r); return `<tr><td>${r.car || "—"}</td><td>${fmtDate(r.startDate)}</td><td>${fmtDate(r.endDate)}</td><td>${p ? Number(p.revenue).toLocaleString("fr-FR") + " AED" : "—"}</td><td>${p ? Number(p.profit).toLocaleString("fr-FR") + " AED" : "—"}</td></tr>`; }).join("")}
-  </table>`;
-}).join("")}
-`}
+    // Header bar
+    doc.setFillColor(...gold);
+    doc.rect(0, 0, W, 22, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text(COMPANY.name, W / 2, 9, { align: "center" });
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`License No. ${COMPANY.license}  |  Register No. ${COMPANY.register}  |  Tel: ${COMPANY.phone}`, W / 2, 15, { align: "center" });
+    doc.text(`${COMPANY.address}  |  Expiry: ${COMPANY.expiry}`, W / 2, 20, { align: "center" });
 
-<div class="footer">
-  ${COMPANY.name} &nbsp;|&nbsp; License No. ${COMPANY.license} &nbsp;|&nbsp; Document généré le ${new Date().toLocaleDateString("fr-FR")}
-</div>
-</body></html>`;
+    y = 30;
+    doc.setTextColor(...dark);
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text(reportTitle, margin, y);
+    y += 7;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...muted);
+    doc.text(`Période : ${periodLabel}  |  Généré le ${new Date().toLocaleDateString("fr-FR")}`, margin, y);
+    y += 10;
 
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `newsloc-rapport-${period}-${new Date().toISOString().slice(0, 10)}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Stats boxes
+    if (reportType === "financial") {
+      const boxes = [
+        { label: "Locations", value: String(rentals.length), color: gold },
+        { label: "Revenus bruts", value: `${Number(revenue).toLocaleString("fr-FR")} AED`, color: gold },
+        { label: "Benefice net", value: `${Number(profit).toLocaleString("fr-FR")} AED`, color: profit >= 0 ? green : red },
+      ];
+      const bw = (W - margin * 2 - 10) / 3;
+      boxes.forEach((b, i) => {
+        const x = margin + i * (bw + 5);
+        doc.setFillColor(248, 246, 240);
+        doc.setDrawColor(...b.color);
+        doc.roundedRect(x, y, bw, 18, 3, 3, "FD");
+        doc.setTextColor(...b.color);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text(b.value, x + bw / 2, y + 9, { align: "center" });
+        doc.setTextColor(...muted);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.text(b.label, x + bw / 2, y + 15, { align: "center" });
+      });
+      y += 25;
+
+      // Table header
+      doc.setFillColor(...gold);
+      doc.rect(margin, y, W - margin * 2, 7, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      const cols = ["Vehicule", "Client", "Depart", "Retour", "J", "Revenu", "Broker", "Benefice", "Enc."];
+      const cw = [40, 28, 20, 20, 8, 24, 20, 24, 12];
+      let cx = margin + 2;
+      cols.forEach((c, i) => { doc.text(c, cx, y + 5); cx += cw[i]; });
+      y += 8;
+
+      rentals.forEach((r, ri) => {
+        if (y > 270) { doc.addPage(); y = 15; }
+        const p = calcProfit(r);
+        if (ri % 2 === 0) { doc.setFillColor(250, 249, 245); doc.rect(margin, y - 1, W - margin * 2, 7, "F"); }
+        doc.setTextColor(...dark);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        cx = margin + 2;
+        const row = [
+          (r.car || "—").slice(0, 20),
+          (r.clientName || "—").slice(0, 14),
+          fmtDate(r.startDate),
+          fmtDate(r.endDate),
+          p ? p.days.toFixed(0) : "—",
+          p ? `${Number(p.revenue).toLocaleString("fr-FR")}` : "—",
+          p ? `${Number(p.cost).toLocaleString("fr-FR")}` : "—",
+          p ? `${Number(p.profit).toLocaleString("fr-FR")}` : "—",
+          r.collectedBy || "—",
+        ];
+        row.forEach((v, i) => {
+          if (i === 7 && p) doc.setTextColor(...(p.profit >= 0 ? green : red));
+          else doc.setTextColor(...dark);
+          doc.text(String(v), cx, y + 4);
+          cx += cw[i];
+        });
+        y += 7;
+      });
+
+    } else if (reportType === "rentals") {
+      doc.setFillColor(...gold);
+      doc.rect(margin, y, W - margin * 2, 7, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      const cols = ["Vehicule", "Client", "Tel", "Permis", "Passeport", "Depart", "Retour", "Prix/j", "Paiement"];
+      const cw = [38, 28, 24, 22, 22, 20, 20, 18, 18];
+      let cx = margin + 2;
+      cols.forEach((c, i) => { doc.text(c, cx, y + 5); cx += cw[i]; });
+      y += 8;
+      rentals.forEach((r, ri) => {
+        if (y > 270) { doc.addPage(); y = 15; }
+        if (ri % 2 === 0) { doc.setFillColor(250, 249, 245); doc.rect(margin, y - 1, W - margin * 2, 7, "F"); }
+        doc.setTextColor(...dark);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        cx = margin + 2;
+        const pay = r.paymentStatus === "paid" ? "Paye" : r.paymentStatus === "partial" ? "Acompte" : "Attente";
+        const row = [(r.car || "—").slice(0, 18), (r.clientName || "—").slice(0, 14), r.clientPhone || "—", r.licenseRef || "—", r.passportRef || "—", fmtDate(r.startDate), fmtDate(r.endDate), r.pricePerDay ? `${r.pricePerDay} AED` : "—", pay];
+        row.forEach((v, i) => { doc.text(String(v), cx, y + 4); cx += cw[i]; });
+        y += 7;
+      });
+
+    } else {
+      data.clients.forEach(c => {
+        const cr = data.rentals.filter(r => (r.clientId === c.id || r.clientName === c.name) && r.startDate && new Date(r.startDate) >= start && new Date(r.startDate) <= end);
+        if (cr.length === 0) return;
+        if (y > 250) { doc.addPage(); y = 15; }
+        const tp = cr.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.profit : 0); }, 0);
+        doc.setFillColor(...gold);
+        doc.rect(margin, y, W - margin * 2, 7, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${c.name}${c.nationality ? " · " + c.nationality : ""}`, margin + 3, y + 5);
+        doc.text(`Benefice: ${Number(tp).toLocaleString("fr-FR")} AED`, W - margin - 3, y + 5, { align: "right" });
+        y += 9;
+        if (c.phone || c.licenseRef || c.passportRef) {
+          doc.setTextColor(...muted);
+          doc.setFontSize(8);
+          doc.setFont("helvetica", "normal");
+          doc.text(`${c.phone ? "Tel: " + c.phone : ""}  ${c.licenseRef ? "Permis: " + c.licenseRef : ""}  ${c.passportRef ? "Passeport: " + c.passportRef : ""}`, margin + 2, y);
+          y += 6;
+        }
+        cr.forEach((r, ri) => {
+          if (y > 270) { doc.addPage(); y = 15; }
+          const p = calcProfit(r);
+          if (ri % 2 === 0) { doc.setFillColor(250, 249, 245); doc.rect(margin, y - 1, W - margin * 2, 6, "F"); }
+          doc.setTextColor(...dark);
+          doc.setFontSize(8);
+          doc.text(`${r.car || "—"}`, margin + 2, y + 3);
+          doc.text(`${fmtDate(r.startDate)} → ${fmtDate(r.endDate)}`, margin + 60, y + 3);
+          if (p) { doc.setTextColor(...(p.profit >= 0 ? green : red)); doc.text(`${Number(p.profit).toLocaleString("fr-FR")} AED`, W - margin - 2, y + 3, { align: "right" }); }
+          y += 6;
+        });
+        y += 6;
+      });
+    }
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFillColor(...gold);
+      doc.rect(0, 287, W, 10, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      doc.text(`${COMPANY.name}  |  License No. ${COMPANY.license}  |  ${new Date().toLocaleDateString("fr-FR")}  |  Page ${i}/${pageCount}`, W / 2, 293, { align: "center" });
+    }
+
+    doc.save(`newsloc-${reportType}-${period}-${new Date().toISOString().slice(0, 10)}.pdf`);
     setGenerating(false);
   }
 
@@ -1066,10 +1153,10 @@ ${Object.values(data.clients.reduce((acc, c) => { acc[c.id] = c; return acc; }, 
       </div>
 
       <button onClick={generatePDF} disabled={generating} style={{ ...btnPrimary, opacity: generating ? 0.7 : 1 }}>
-        {generating ? "Génération..." : "📄 Générer et télécharger"}
+        {generating ? "Génération..." : "📄 Générer le PDF"}
       </button>
       <div style={{ color: C.muted, fontSize: 12, textAlign: "center", marginTop: 10 }}>
-        Le fichier s'ouvre dans votre navigateur — imprimez-le en PDF via Fichier → Imprimer → Enregistrer en PDF
+        Le fichier PDF se télécharge directement sur votre appareil
       </div>
     </div>
   );
