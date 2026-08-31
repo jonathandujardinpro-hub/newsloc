@@ -1079,8 +1079,9 @@ const NAV = [
   { id: "dashboard", icon: "◈", label: "Accueil" },
   { id: "rentals", icon: "🚗", label: "Locations" },
   { id: "analytics", icon: "📊", label: "Stats" },
-  { id: "calendar", icon: "📅", label: "Calendrier" },
+  { id: "calendar", icon: "📅", label: "Agenda" },
   { id: "clients", icon: "👤", label: "Clients" },
+  { id: "export", icon: "📄", label: "Export" },
 ];
 
 export default function App() {
