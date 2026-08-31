@@ -1248,9 +1248,9 @@ export default function App() {
 
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 540, background: C.surface, borderTop: `1px solid ${C.border}`, display: "flex" }}>
         {NAV.map(n => (
-          <button key={n.id} onClick={() => setTab(n.id)} style={{ flex: 1, padding: "10px 0 14px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, position: "relative" }}>
-            <span style={{ fontSize: 18 }}>{n.icon}</span>
-            <span style={{ fontSize: 9, fontWeight: 600, color: tab === n.id ? C.gold : C.muted }}>{n.label}</span>
+          <button key={n.id} onClick={() => setTab(n.id)} style={{ flex: 1, padding: "14px 0 20px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 5, position: "relative" }}>
+            <span style={{ fontSize: 22 }}>{n.icon}</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: tab === n.id ? C.gold : C.muted }}>{n.label}</span>
             {tab === n.id && <div style={{ width: 16, height: 2, background: C.gold, borderRadius: 1, position: "absolute", bottom: 6 }} />}
           </button>
         ))}
