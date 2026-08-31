@@ -922,9 +922,12 @@ function ExportView({ data }) {
   const [period, setPeriod] = useState("month");
   const [reportType, setReportType] = useState("financial");
   const [generating, setGenerating] = useState(false);
+  const [customStart, setCustomStart] = useState(new Date().toISOString().slice(0, 10));
+  const [customEnd, setCustomEnd] = useState(new Date().toISOString().slice(0, 10));
 
   function getDateRange() {
     const now = new Date();
+    if (period === "custom") return { start: new Date(customStart), end: new Date(customEnd) };
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     let start;
     if (period === "month") start = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -945,8 +948,8 @@ function ExportView({ data }) {
     const revenue = rentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.revenue : 0); }, 0);
     const cost = rentals.reduce((s, r) => { const p = calcProfit(r); return s + (p ? p.cost : 0); }, 0);
     const profit = revenue - cost;
-    const periodLabel = { month: "Mois en cours", quarter: "Trimestre", "6months": "6 mois", year: "12 mois" }[period];
-    const reportTitle = reportType === "financial" ? "Bilan Financier" : reportType === "rentals" ? "Rapport des Locations" : "Rapport par Client";
+    const periodLabel = { month: "Current Month", quarter: "Quarter", "6months": "6 Months", year: "12 Months", custom: `${customStart} to ${customEnd}` }[period];
+    const reportTitle = reportType === "financial" ? "Financial Report" : reportType === "rentals" ? "Rentals Report" : "Client Report";
 
     const { jsPDF } = await import("https://esm.sh/jspdf@2.5.1");
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -980,15 +983,15 @@ function ExportView({ data }) {
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...muted);
-    doc.text(`Période : ${periodLabel}  |  Généré le ${new Date().toLocaleDateString("fr-FR")}`, margin, y);
+    doc.text(`Period: ${periodLabel}  |  Generated on ${new Date().toLocaleDateString("en-GB")}`, margin, y);
     y += 10;
 
     // Stats boxes
     if (reportType === "financial") {
       const boxes = [
-        { label: "Locations", value: String(rentals.length), color: gold },
-        { label: "Revenus bruts", value: `${Number(revenue).toLocaleString("fr-FR")} AED`, color: gold },
-        { label: "Benefice net", value: `${Number(profit).toLocaleString("fr-FR")} AED`, color: profit >= 0 ? green : red },
+        { label: "Rentals", value: String(rentals.length), color: gold },
+        { label: "Gross Revenue", value: `${Math.round(revenue).toString()} AED`, color: gold },
+        { label: "Net Profit", value: `${Math.round(profit).toString()} AED`, color: profit >= 0 ? green : red },
       ];
       const bw = (W - margin * 2 - 10) / 3;
       boxes.forEach((b, i) => {
@@ -1013,7 +1016,7 @@ function ExportView({ data }) {
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(8);
       doc.setFont("helvetica", "bold");
-      const cols = ["Vehicule", "Client", "Depart", "Retour", "J", "Revenu", "Broker", "Benefice", "Enc."];
+      const cols = ["Vehicle", "Client", "Start", "End", "Days", "Revenue", "Broker", "Profit", "By"];
       const cw = [40, 28, 20, 20, 8, 24, 20, 24, 12];
       let cx = margin + 2;
       cols.forEach((c, i) => { doc.text(c, cx, y + 5); cx += cw[i]; });
@@ -1033,9 +1036,9 @@ function ExportView({ data }) {
           fmtDate(r.startDate),
           fmtDate(r.endDate),
           p ? p.days.toFixed(0) : "—",
-          p ? `${Number(p.revenue).toLocaleString("fr-FR")}` : "—",
-          p ? `${Number(p.cost).toLocaleString("fr-FR")}` : "—",
-          p ? `${Number(p.profit).toLocaleString("fr-FR")}` : "—",
+          p ? `${Math.round(p.revenue).toString()}` : "—",
+          p ? `${Math.round(p.cost).toString()}` : "—",
+          p ? `${Math.round(p.profit).toString()}` : "—",
           r.collectedBy || "—",
         ];
         row.forEach((v, i) => {
@@ -1053,7 +1056,7 @@ function ExportView({ data }) {
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(8);
       doc.setFont("helvetica", "bold");
-      const cols = ["Vehicule", "Client", "Tel", "Permis", "Passeport", "Depart", "Retour", "Prix/j", "Paiement"];
+      const cols = ["Vehicle", "Client", "Phone", "License", "Passport", "Start", "End", "Price/d", "Payment"];
       const cw = [38, 28, 24, 22, 22, 20, 20, 18, 18];
       let cx = margin + 2;
       cols.forEach((c, i) => { doc.text(c, cx, y + 5); cx += cw[i]; });
@@ -1065,7 +1068,7 @@ function ExportView({ data }) {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
         cx = margin + 2;
-        const pay = r.paymentStatus === "paid" ? "Paye" : r.paymentStatus === "partial" ? "Acompte" : "Attente";
+        const pay = r.paymentStatus === "paid" ? "Paid" : r.paymentStatus === "partial" ? "Partial" : "Pending";
         const row = [(r.car || "—").slice(0, 18), (r.clientName || "—").slice(0, 14), r.clientPhone || "—", r.licenseRef || "—", r.passportRef || "—", fmtDate(r.startDate), fmtDate(r.endDate), r.pricePerDay ? `${r.pricePerDay} AED` : "—", pay];
         row.forEach((v, i) => { doc.text(String(v), cx, y + 4); cx += cw[i]; });
         y += 7;
@@ -1083,7 +1086,7 @@ function ExportView({ data }) {
         doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
         doc.text(`${c.name}${c.nationality ? " · " + c.nationality : ""}`, margin + 3, y + 5);
-        doc.text(`Benefice: ${Number(tp).toLocaleString("fr-FR")} AED`, W - margin - 3, y + 5, { align: "right" });
+        doc.text(`Profit: ${Math.round(tp).toString()} AED`, W - margin - 3, y + 5, { align: "right" });
         y += 9;
         if (c.phone || c.licenseRef || c.passportRef) {
           doc.setTextColor(...muted);
@@ -1100,7 +1103,7 @@ function ExportView({ data }) {
           doc.setFontSize(8);
           doc.text(`${r.car || "—"}`, margin + 2, y + 3);
           doc.text(`${fmtDate(r.startDate)} → ${fmtDate(r.endDate)}`, margin + 60, y + 3);
-          if (p) { doc.setTextColor(...(p.profit >= 0 ? green : red)); doc.text(`${Number(p.profit).toLocaleString("fr-FR")} AED`, W - margin - 2, y + 3, { align: "right" }); }
+          if (p) { doc.setTextColor(...(p.profit >= 0 ? green : red)); doc.text(`${Math.round(p.profit).toString()} AED`, W - margin - 2, y + 3, { align: "right" }); }
           y += 6;
         });
         y += 6;
@@ -1115,29 +1118,53 @@ function ExportView({ data }) {
       doc.rect(0, 287, W, 10, "F");
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(8);
-      doc.text(`${COMPANY.name}  |  License No. ${COMPANY.license}  |  ${new Date().toLocaleDateString("fr-FR")}  |  Page ${i}/${pageCount}`, W / 2, 293, { align: "center" });
+      doc.text(`${COMPANY.name}  |  License No. ${COMPANY.license}  |  ${new Date().toLocaleDateString("en-GB")}  |  Page ${i}/${pageCount}`, W / 2, 293, { align: "center" });
     }
 
     doc.save(`newsloc-${reportType}-${period}-${new Date().toISOString().slice(0, 10)}.pdf`);
     setGenerating(false);
   }
 
-  const periods = [{ k: "month", l: "Ce mois" }, { k: "quarter", l: "Trimestre" }, { k: "6months", l: "6 mois" }, { k: "year", l: "12 mois" }];
+  const periods = [{ k: "month", l: "Ce mois" }, { k: "quarter", l: "Trimestre" }, { k: "6months", l: "6 mois" }, { k: "year", l: "12 mois" }, { k: "custom", l: "Personnalisé" }];
   const types = [
-    { k: "financial", l: "Bilan financier", d: "Revenus, coûts, bénéfice net", icon: "📊" },
-    { k: "rentals", l: "Toutes les locations", d: "Liste complète avec détails clients", icon: "🚗" },
-    { k: "clients", l: "Par client", d: "Historique et stats par client", icon: "👤" },
+    { k: "financial", l: "Financial Report", d: "Revenue, costs, net profit", icon: "📊" },
+    { k: "rentals", l: "All Rentals", d: "Full list with client details", icon: "🚗" },
+    { k: "clients", l: "By Client", d: "History and stats per client", icon: "👤" },
   ];
 
   return (
     <div>
       <div style={{ color: C.gold, fontWeight: 700, fontSize: 12, letterSpacing: 1, marginBottom: 10 }}>PÉRIODE</div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {periods.map(p => (
           <button key={p.k} onClick={() => setPeriod(p.k)} style={{ padding: "8px 16px", borderRadius: 20, border: "none", cursor: "pointer", background: period === p.k ? C.gold : C.border, color: period === p.k ? C.bg : C.text, fontWeight: 600, fontSize: 13 }}>{p.l}</button>
         ))}
       </div>
+      {period === "custom" && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Du</div>
+            <input type="date" style={inputStyle} value={customStart} onChange={e => setCustomStart(e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Au</div>
+            <input type="date" style={inputStyle} value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+          </div>
+        </div>
+      )}
 
+      {period === "custom" && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Du</div>
+            <input type="date" style={inputStyle} value={customStart} onChange={e => setCustomStart(e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Au</div>
+            <input type="date" style={inputStyle} value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+          </div>
+        </div>
+      )}
       <div style={{ color: C.gold, fontWeight: 700, fontSize: 12, letterSpacing: 1, marginBottom: 10 }}>TYPE DE RAPPORT</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
         {types.map(t => (
