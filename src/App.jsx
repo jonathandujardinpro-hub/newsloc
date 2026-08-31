@@ -1016,8 +1016,8 @@ function ExportView({ data }) {
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(8);
       doc.setFont("helvetica", "bold");
-      const cols = ["Vehicle", "Client", "Start", "End", "Days", "Revenue", "Broker", "Profit", "By"];
-      const cw = [40, 28, 20, 20, 8, 24, 20, 24, 12];
+      const cols = ["Vehicle", "Client", "Start", "End", "Days", "Revenue", "Broker", "Profit"];
+      const cw = [42, 30, 22, 22, 10, 26, 22, 26];
       let cx = margin + 2;
       cols.forEach((c, i) => { doc.text(c, cx, y + 5); cx += cw[i]; });
       y += 8;
@@ -1039,7 +1039,6 @@ function ExportView({ data }) {
           p ? `${Math.round(p.revenue).toString()}` : "—",
           p ? `${Math.round(p.cost).toString()}` : "—",
           p ? `${Math.round(p.profit).toString()}` : "—",
-          r.collectedBy || "—",
         ];
         row.forEach((v, i) => {
           if (i === 7 && p) doc.setTextColor(...(p.profit >= 0 ? green : red));
@@ -1127,9 +1126,9 @@ function ExportView({ data }) {
 
   const periods = [{ k: "month", l: "Ce mois" }, { k: "quarter", l: "Trimestre" }, { k: "6months", l: "6 mois" }, { k: "year", l: "12 mois" }, { k: "custom", l: "Personnalisé" }];
   const types = [
-    { k: "financial", l: "Financial Report", d: "Revenue, costs, net profit", icon: "📊" },
-    { k: "rentals", l: "All Rentals", d: "Full list with client details", icon: "🚗" },
-    { k: "clients", l: "By Client", d: "History and stats per client", icon: "👤" },
+    { k: "financial", l: "Bilan financier", d: "Revenus, coûts, bénéfice net", icon: "📊" },
+    { k: "rentals", l: "Toutes les locations", d: "Liste complète avec détails clients", icon: "🚗" },
+    { k: "clients", l: "Par client", d: "Historique et stats par client", icon: "👤" },
   ];
 
   return (
@@ -1141,28 +1140,18 @@ function ExportView({ data }) {
         ))}
       </div>
       {period === "custom" && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Du</div>
-            <input type="date" style={inputStyle} value={customStart} onChange={e => setCustomStart(e.target.value)} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Au</div>
-            <input type="date" style={inputStyle} value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
-          </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
+          <input type="date" style={{ ...inputStyle, flex: 1 }} value={customStart} onChange={e => setCustomStart(e.target.value)} />
+          <span style={{ color: C.muted, fontSize: 13 }}>→</span>
+          <input type="date" style={{ ...inputStyle, flex: 1 }} value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
         </div>
       )}
 
       {period === "custom" && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Du</div>
-            <input type="date" style={inputStyle} value={customStart} onChange={e => setCustomStart(e.target.value)} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Au</div>
-            <input type="date" style={inputStyle} value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
-          </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
+          <input type="date" style={{ ...inputStyle, flex: 1 }} value={customStart} onChange={e => setCustomStart(e.target.value)} />
+          <span style={{ color: C.muted, fontSize: 13 }}>→</span>
+          <input type="date" style={{ ...inputStyle, flex: 1 }} value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
         </div>
       )}
       <div style={{ color: C.gold, fontWeight: 700, fontSize: 12, letterSpacing: 1, marginBottom: 10 }}>TYPE DE RAPPORT</div>
