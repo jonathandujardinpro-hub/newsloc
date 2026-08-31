@@ -952,8 +952,8 @@ function ExportView({ data }) {
     const reportTitle = reportType === "financial" ? "Financial Report" : reportType === "rentals" ? "Rentals Report" : "Client Report";
 
     const { jsPDF } = await import("https://esm.sh/jspdf@2.5.1");
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const W = 210, margin = 15;
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const W = 297, margin = 15;
     let y = 15;
 
     const gold = [201, 168, 76];
@@ -1016,14 +1016,14 @@ function ExportView({ data }) {
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(8);
       doc.setFont("helvetica", "bold");
-      const cols = ["Vehicle", "Client", "Start", "End", "Days", "Revenue", "Broker", "Profit"];
-      const cw = [42, 30, 22, 22, 10, 26, 22, 26];
+      const cols = ["Vehicle", "Client", "Start", "End", "Days", "Revenue (AED)", "Broker (AED)", "Profit (AED)"];
+      const cw =   [55,        40,       25,      25,     12,      35,              35,              35];
       let cx = margin + 2;
       cols.forEach((c, i) => { doc.text(c, cx, y + 5); cx += cw[i]; });
       y += 8;
 
       rentals.forEach((r, ri) => {
-        if (y > 270) { doc.addPage(); y = 15; }
+        if (y > 185) { doc.addPage(); y = 15; }
         const p = calcProfit(r);
         if (ri % 2 === 0) { doc.setFillColor(250, 249, 245); doc.rect(margin, y - 1, W - margin * 2, 7, "F"); }
         doc.setTextColor(...dark);
@@ -1061,7 +1061,7 @@ function ExportView({ data }) {
       cols.forEach((c, i) => { doc.text(c, cx, y + 5); cx += cw[i]; });
       y += 8;
       rentals.forEach((r, ri) => {
-        if (y > 270) { doc.addPage(); y = 15; }
+        if (y > 185) { doc.addPage(); y = 15; }
         if (ri % 2 === 0) { doc.setFillColor(250, 249, 245); doc.rect(margin, y - 1, W - margin * 2, 7, "F"); }
         doc.setTextColor(...dark);
         doc.setFont("helvetica", "normal");
@@ -1095,7 +1095,7 @@ function ExportView({ data }) {
           y += 6;
         }
         cr.forEach((r, ri) => {
-          if (y > 270) { doc.addPage(); y = 15; }
+          if (y > 185) { doc.addPage(); y = 15; }
           const p = calcProfit(r);
           if (ri % 2 === 0) { doc.setFillColor(250, 249, 245); doc.rect(margin, y - 1, W - margin * 2, 6, "F"); }
           doc.setTextColor(...dark);
@@ -1114,7 +1114,7 @@ function ExportView({ data }) {
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
       doc.setFillColor(...gold);
-      doc.rect(0, 287, W, 10, "F");
+      doc.rect(0, 200, W, 10, "F");
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(8);
       doc.text(`${COMPANY.name}  |  License No. ${COMPANY.license}  |  ${new Date().toLocaleDateString("en-GB")}  |  Page ${i}/${pageCount}`, W / 2, 293, { align: "center" });
